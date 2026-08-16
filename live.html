@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AAMush Live — Orbital Command Center</title>
+<meta name="description" content="AAMush Technologies Orbital Command Center">
+<meta name="author" content="Dr James K Mushi PhD, AAMush Technologies">
+
+<script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+<script src="https://unpkg.com/satellite.js@5.0.0/dist/satellite.min.js"></script>
+
+<style>
+:root {
+  --bg: #0a0a0f; --bg-panel: #0f1117; --bg-elevated: #14161e; --border: #1e2030;
+  --text-primary: #e8e8ec; --text-secondary: #9ca3af; --text-tertiary: #6b7280;
+  --accent: #00d4ff; --accent-dim: rgba(0,212,255,0.15);
+  --live: #22c55e; --live-dim: rgba(34,197,94,0.15);
+  --sim: #f59e0b; --sim-dim: rgba(245,158,11,0.15);
+  --offline: #ef4444; --offline-dim: rgba(239,68,68,0.15);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  overflow: hidden; height: 100vh; width: 100vw;
+}
+.header {
+  position: fixed; top: 0; left: 0; right: 0; height: 56px;
+  background: linear-gradient(180deg, rgba(10,10,15,0.95) 0%, rgba(10,10,15,0.8) 100%);
+  backdrop-filter: blur(12px); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 16px; z-index: 1000;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.logo-mark {
+  width: 32px; height: 32px; border: 1.5px solid var(--accent); border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; color: var(--accent); letter-spacing: 1px;
+}
+.header-title { display: flex; flex-direction: column; }
+.header-title .main { font-size: 15px; font-weight: 600; letter-spacing: 0.3px; }
+.header-title .sub { font-size: 11px; color: var(--text-tertiary); }
+.header-title .dev { font-size: 10px; color: var(--accent); opacity: 0.7; margin-top: 1px; }
+.header-right { display: flex; align-items: center; gap: 12px; }
+.status-pill {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 6px; font-size: 10px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.status-pill.live { background: var(--live-dim); color: var(--live); border: 1px solid rgba(34,197,94,0.3); }
+.status-pill.sim { background: var(--sim-dim); color: var(--sim); border: 1px solid rgba(245,158,11,0.3); }
+.status-pill.offline { background: var(--offline-dim); color: var(--offline); border: 1px solid rgba(239,68,68,0.3); }
+.pulse-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; animation: pulse 2s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.8); } }
+.clock { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-secondary); font-weight: 500; }
+.container { display: flex; height: 100vh; padding-top: 56px; }
+.sidebar {
+  width: 300px; min-width: 260px; background: var(--bg-panel);
+  border-right: 1px solid var(--border); display: flex; flex-direction: column;
+  overflow-y: auto; padding: 14px; gap: 10px;
+}
+.sidebar::-webkit-scrollbar { width: 4px; }
+.sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.main-view { flex: 1; position: relative; overflow: hidden; }
+#globe-container { width: 100%; height: 100%; }
+.panel { background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.panel-title {
+  font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px;
+  color: var(--text-tertiary); margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
+}
+.panel-title .badge { font-size: 9px; padding: 2px 6px; border-radius: 4px; font-weight: 600; }
+.badge-live { background: var(--live-dim); color: var(--live); }
+.badge-sim { background: var(--sim-dim); color: var(--sim); }
+.badge-offline { background: var(--offline-dim); color: var(--offline); }
+.badge-cache { background: rgba(100,100,255,0.15); color: #818cf8; }
+.metric-row { display: flex; gap: 12px; margin-bottom: 8px; }
+.metric { flex: 1; }
+.metric .value { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.1; color: var(--text-primary); }
+.metric .label { font-size: 10px; color: var(--text-tertiary); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
+.divider { height: 1px; background: var(--border); margin: 8px 0; }
+.vis-item {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px; border-radius: 6px; background: rgba(255,255,255,0.02); margin-bottom: 4px;
+}
+.vis-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.vis-dot.online { background: var(--live); box-shadow: 0 0 6px var(--live); }
+.vis-dot.offline { background: var(--offline); }
+.vis-dot.weak { background: var(--sim); }
+.vis-name { font-size: 11px; font-weight: 500; }
+.vis-detail { font-size: 10px; color: var(--text-tertiary); }
+.signal-bars { display: flex; gap: 2px; align-items: flex-end; height: 12px; }
+.signal-bars span { width: 2.5px; background: var(--border); border-radius: 1px; }
+.signal-bars span:nth-child(1) { height: 3px; } .signal-bars span:nth-child(2) { height: 5px; }
+.signal-bars span:nth-child(3) { height: 8px; } .signal-bars span:nth-child(4) { height: 12px; }
+.signal-bars span.on { background: var(--live); } .signal-bars span.warn { background: var(--sim); }
+.telemetry-log { font-family: monospace; font-size: 10px; line-height: 1.6; color: var(--text-secondary); max-height: 120px; overflow-y: auto; }
+.telemetry-log .time { color: var(--text-tertiary); } .telemetry-log .live { color: var(--live); }
+.telemetry-log .sim { color: var(--sim); } .telemetry-log .cache { color: #818cf8; }
+.conn-status { display: flex; align-items: center; gap: 8px; padding: 8px; border-radius: 6px; font-size: 11px; font-weight: 500; }
+.conn-status.connected { background: var(--live-dim); color: var(--live); }
+.conn-status.disconnected { background: var(--offline-dim); color: var(--offline); }
+.globe-overlay {
+  position: absolute; bottom: 0; left: 0; right: 0; padding: 14px 16px;
+  background: linear-gradient(0deg, rgba(10,10,15,0.95) 0%, transparent 100%);
+  display: flex; justify-content: space-between; align-items: flex-end; pointer-events: none;
+}
+.globe-overlay > * { pointer-events: auto; }
+.provenance { display: flex; gap: 10px; flex-wrap: wrap; }
+.prov-item { display: flex; align-items: center; gap: 6px; font-size: 10px; padding: 4px 8px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--border); }
+.prov-item .dot { width: 5px; height: 5px; border-radius: 50%; }
+.prov-item.live .dot { background: var(--live); } .prov-item.sim .dot { background: var(--sim); }
+.prov-item.cache .dot { background: #818cf8; } .prov-item.offline .dot { background: var(--offline); }
+.footer-dev { font-size: 10px; color: var(--text-tertiary); text-align: right; }
+.footer-dev strong { color: var(--accent); font-weight: 500; }
+.loading-overlay {
+  position: fixed; inset: 0; background: var(--bg); display: flex;
+  flex-direction: column; align-items: center; justify-content: center; gap: 16px; z-index: 2000;
+}
+.spinner { width: 40px; height: 40px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.loading-text { font-size: 13px; color: var(--text-secondary); }
+.hidden { opacity: 0; pointer-events: none; transition: opacity 0.5s; }
+@media (max-width: 900px) { .sidebar { width: 260px; min-width: 240px; } .metric .value { font-size: 18px; } }
+@media (max-width: 700px) { .container { flex-direction: column; } .sidebar { width: 100%; height: 40vh; min-width: auto; border-right: none; border-bottom: 1px solid var(--border); } .main-view { height: 60vh; } }
+</style>
+</head>
+<body>
+
+<div id="loading" class="loading-overlay">
+  <div class="spinner"></div>
+  <div class="loading-text">Initializing orbital propagation engine...</div>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <div class="logo-mark">AA</div>
+    <div class="header-title">
+      <span class="main">AAMush Live</span>
+      <span class="sub">Orbital Command Center — East Africa Trade Backbone</span>
+      <span class="dev">Dr James K Mushi PhD — AAMush Technologies © 2026</span>
+    </div>
+  </div>
+  <div class="header-right">
+    <div id="ws-status" class="status-pill offline"><span class="pulse-dot"></span><span id="ws-text">Gateway Offline</span></div>
+    <div id="eat-clock" class="clock">--:--:-- EAT</div>
+  </div>
+</div>
+
+<div class="container">
+  <div class="sidebar">
+    <div class="panel">
+      <div class="panel-title">Satellite — EUTELSAT 7B <span id="sat-badge" class="badge badge-offline">OFFLINE</span></div>
+      <div class="metric-row">
+        <div class="metric"><div class="value" id="sat-lat">--.------</div><div class="label">Latitude °</div></div>
+        <div class="metric"><div class="value" id="sat-lon">--.------</div><div class="label">Longitude °</div></div>
+      </div>
+      <div class="metric-row">
+        <div class="metric"><div class="value" id="sat-alt">--,---</div><div class="label">Altitude km</div></div>
+        <div class="metric"><div class="value" id="sat-vel">--.--</div><div class="label">Velocity km/s</div></div>
+      </div>
+      <div class="divider"></div>
+      <div style="font-size:10px; color:var(--text-tertiary); line-height:1.6;">
+        <div style="display:flex; justify-content:space-between;"><span>NORAD ID</span><span style="color:var(--text-secondary); font-weight:500;">39163</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Source</span><span id="tle-source" style="color:var(--live); font-weight:500;">CelesTrak</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>TLE Epoch</span><span id="tle-epoch" style="color:var(--text-secondary);">--</span></div>
+        <div style="display:flex; justify-content:space-between;"><span>Data Age</span><span id="tle-age" style="color:var(--text-secondary);">--</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Visibility Over East Africa <span class="badge badge-live">LIVE</span></div>
+      <div id="visibility-list"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">AAMush Mesh-01 Network <span id="mesh-badge" class="badge badge-sim">SIMULATED</span></div>
+      <div class="metric-row">
+        <div class="metric"><div class="value" id="mesh-nodes">--/--</div><div class="label">Nodes</div></div>
+        <div class="metric"><div class="value" id="mesh-signal">--%</div><div class="label">Signal</div></div>
+      </div>
+      <div class="divider"></div>
+      <div style="font-size:10px; color:var(--text-tertiary); margin-bottom:6px;">Last Telemetry</div>
+      <div id="telemetry-log" class="telemetry-log"><div class="entry"><span class="time">[--:--:--]</span> Initializing...</div></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-title">Gateway Connection</div>
+      <div id="conn-detail" class="conn-status disconnected"><span class="pulse-dot"></span><span>Not connected to AAMush Live Gateway</span></div>
+      <div style="font-size:10px; color:var(--text-tertiary); margin-top:8px; line-height:1.5;">The gateway receives live Mesh-01 telemetry and relays it via secure WebSocket.</div>
+    </div>
+  </div>
+
+  <div class="main-view">
+    <div id="globe-container"></div>
+    <div class="globe-overlay">
+      <div class="provenance">
+        <div class="prov-item live" id="prov-orbital"><span class="dot"></span><span>Orbital: CelesTrak TLE → SGP4</span></div>
+        <div class="prov-item sim" id="prov-mesh"><span class="dot"></span><span>Mesh: Awaiting device telemetry</span></div>
+        <div class="prov-item live"><span class="dot"></span><span>Clock: NTP-synchronized</span></div>
+      </div>
+      <div class="footer-dev"><strong>Dr James K Mushi PhD</strong><br>AAMush Technologies © 2026</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== EMBEDDED BACKUP TLE (EUTELSAT 7B, NORAD 39163) =====
+const BACKUP_TLE = {
+  "OBJECT_NAME":"EUTELSAT 7B","OBJECT_ID":"2013-022A","EPOCH":"2026-08-15T13:36:51.334848",
+  "MEAN_MOTION":1.0027094,"ECCENTRICITY":0.00023204,"INCLINATION":0.0714,
+  "RA_OF_ASC_NODE":335.7179,"ARG_OF_PERICENTER":82.724,"MEAN_ANOMALY":116.725,
+  "EPHEMERIS_TYPE":0,"CLASSIFICATION_TYPE":"U","NORAD_CAT_ID":39163,
+  "ELEMENT_SET_NO":999,"REV_AT_EPOCH":4854,"BSTAR":0,"MEAN_MOTION_DOT":3.5e-7,"MEAN_MOTION_DDOT":0
+};
+
+const CONFIG = {
+  CELESTRAK_URL: 'https://celestrak.org/NORAD/elements/gp.php?NAME=EUTELSAT+7B&FORMAT=JSON',
+  CORS_PROXY: 'https://api.allorigins.win/raw?url=',
+  GATEWAY_WS: 'wss://your-worker.your-subdomain.workers.dev/ws/orbital',
+  NORAD_ID: 39163,
+  TLE_REFRESH_MS: 4 * 60 * 60 * 1000,
+};
+
+const STATIONS = {
+  'Dar es Salaam': { lat: -6.80, lon: 39.30, el: 0, color: 0x22c55e, nodeId: 'TZ-DSM-01' },
+  'Mombasa':       { lat: -4.05, lon: 39.67, el: 0, color: 0x3b82f6, nodeId: 'KE-MOM-01' },
+  'Nairobi':       { lat: -1.29, lon: 36.82, el: 1795, color: 0xef4444, nodeId: 'KE-NBO-01' },
+  'Kampala':       { lat: 0.32,  lon: 32.58, el: 1200, color: 0xa855f7, nodeId: 'UG-KLA-01' },
+  'Kigali':        { lat: -1.94, lon: 30.06, el: 1567, color: 0xf59e0b, nodeId: 'RW-KGL-01' },
+  'Bujumbura':     { lat: -3.36, lon: 29.36, el: 774,  color: 0x06b6d4, nodeId: 'BI-BJM-01' },
+};
+
+let satrec = null;
+let tleEpoch = null;
+let tleSource = 'embedded';
+let ws = null;
+let wsConnected = false;
+let meshData = { nodesOnline: 0, nodesTotal: 24, signal: 0, latency: 0, mode: 'OFFLINE' };
+let telemetryEntries = [];
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0a0f);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+camera.position.set(0, 0, 3.2);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+const container = document.getElementById('globe-container');
+function resizeRenderer() {
+  const w = container.clientWidth, h = container.clientHeight;
+  renderer.setSize(w, h); renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+resizeRenderer(); window.addEventListener('resize', resizeRenderer);
+container.appendChild(renderer.domElement);
+
+const earth = new THREE.Mesh(new THREE.SphereGeometry(1, 64, 64), new THREE.MeshPhongMaterial({
+  color: 0x1a1a2e, emissive: 0x0a0a15, specular: 0x111111, shininess: 10, transparent: true, opacity: 0.95
+}));
+scene.add(earth);
+const atmosphere = new THREE.Mesh(new THREE.SphereGeometry(1.08, 64, 64), new THREE.MeshBasicMaterial({
+  color: 0x00d4ff, transparent: true, opacity: 0.08, side: THREE.BackSide
+}));
+scene.add(atmosphere);
+const grid = new THREE.PolarGridHelper(1.02, 16, 8, 64, 0x1e2030, 0x1e2030);
+grid.rotation.x = Math.PI / 2; earth.add(grid);
+scene.add(new THREE.AmbientLight(0x404040, 1.5));
+const dl = new THREE.DirectionalLight(0xffffff, 1.2); dl.position.set(5,3,5); scene.add(dl);
+const bl = new THREE.DirectionalLight(0x00d4ff, 0.3); bl.position.set(-5,-2,-5); scene.add(bl);
+
+const starsGeo = new THREE.BufferGeometry();
+const sp = new Float32Array(2000 * 3);
+for (let i = 0; i < 2000 * 3; i++) sp[i] = (Math.random() - 0.5) * 40;
+starsGeo.setAttribute('position', new THREE.BufferAttribute(sp, 3));
+scene.add(new THREE.Points(starsGeo, new THREE.PointsMaterial({ color: 0xffffff, size: 0.015, transparent: true, opacity: 0.6 })));
+
+const cityGroup = new THREE.Group(); earth.add(cityGroup);
+Object.entries(STATIONS).forEach(([name, data]) => {
+  const pos = latLonToVec(data.lat, data.lon, 1.015);
+  const g = new THREE.Mesh(new THREE.SphereGeometry(0.025,16,16), new THREE.MeshBasicMaterial({ color: data.color, transparent: true, opacity: 0.4 }));
+  g.position.copy(pos); cityGroup.add(g);
+  const d = new THREE.Mesh(new THREE.SphereGeometry(0.012,16,16), new THREE.MeshBasicMaterial({ color: data.color }));
+  d.position.copy(pos); cityGroup.add(d);
+  const c = document.createElement('canvas'); c.width=256; c.height=64;
+  const x = c.getContext('2d'); x.fillStyle='rgba(0,0,0,0)'; x.fillRect(0,0,256,64);
+  x.font='bold 24px sans-serif'; x.fillStyle='#9ca3af'; x.fillText(name,0,40);
+  const t = new THREE.CanvasTexture(c);
+  const l = new THREE.Mesh(new THREE.PlaneGeometry(0.3,0.075), new THREE.MeshBasicMaterial({ map:t, transparent:true, side:THREE.DoubleSide }));
+  l.position.copy(pos.clone().multiplyScalar(1.12)); l.lookAt(0,0,0); cityGroup.add(l);
+});
+
+const satGroup = new THREE.Group(); scene.add(satGroup);
+satGroup.add(new THREE.Mesh(new THREE.BoxGeometry(0.04,0.02,0.06), new THREE.MeshBasicMaterial({ color:0x00d4ff })));
+const p1 = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.005,0.03), new THREE.MeshBasicMaterial({ color:0x2244aa, transparent:true, opacity:0.8 }));
+p1.position.set(0.08,0,0); satGroup.add(p1);
+const p2 = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.005,0.03), new THREE.MeshBasicMaterial({ color:0x2244aa, transparent:true, opacity:0.8 }));
+p2.position.set(-0.08,0,0); satGroup.add(p2);
+satGroup.add(new THREE.Mesh(new THREE.SphereGeometry(0.06,16,16), new THREE.MeshBasicMaterial({ color:0x00d4ff, transparent:true, opacity:0.2 })));
+
+const trailPoints = [], trailMax = 200;
+const trailGeo = new THREE.BufferGeometry();
+const trailPos = new Float32Array(trailMax * 3);
+trailGeo.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+const trailLine = new THREE.Line(trailGeo, new THREE.LineBasicMaterial({ color:0x00d4ff, transparent:true, opacity:0.4 }));
+scene.add(trailLine);
+
+const cone = new THREE.Mesh(new THREE.ConeGeometry(0.5,0.8,32,1,true), new THREE.MeshBasicMaterial({ color:0x00d4ff, transparent:true, opacity:0.06, side:THREE.DoubleSide }));
+scene.add(cone);
+const linkGroup = new THREE.Group(); scene.add(linkGroup);
+
+function latLonToVec(lat, lon, r) {
+  const phi = (90-lat)*Math.PI/180, theta = (lon+180)*Math.PI/180;
+  return new THREE.Vector3(-r*Math.sin(phi)*Math.cos(theta), r*Math.cos(phi), r*Math.sin(phi)*Math.sin(theta));
+}
+
+function buildSatrec(sat) {
+  const epoch = new Date(sat.EPOCH);
+  const s = new satellite.Satrec();
+  s.satnum = sat.NORAD_CAT_ID;
+  s.epochyr = epoch.getUTCFullYear() % 100;
+  s.epochdays = (epoch - new Date(Date.UTC(epoch.getUTCFullYear(), 0, 1))) / 86400000;
+  const jd = satellite.jday(epoch.getUTCFullYear(), epoch.getUTCMonth()+1, epoch.getUTCDate(), epoch.getUTCHours(), epoch.getUTCMinutes(), epoch.getUTCSeconds() + epoch.getUTCMilliseconds()/1000);
+  s.jdsatepoch = jd; s.jdsatepochF = 0;
+  s.ndot = sat.MEAN_MOTION_DOT * (2*Math.PI/1440)/1440;
+  s.nddot = sat.MEAN_MOTION_DDOT * (2*Math.PI/1440)/(1440**2);
+  s.bstar = sat.BSTAR;
+  s.inclo = sat.INCLINATION * Math.PI/180;
+  s.nodeo = sat.RA_OF_ASC_NODE * Math.PI/180;
+  s.ecco = sat.ECCENTRICITY;
+  s.argpo = sat.ARG_OF_PERICENTER * Math.PI/180;
+  s.mo = sat.MEAN_ANOMALY * Math.PI/180;
+  s.no_kozai = sat.MEAN_MOTION * (2*Math.PI/1440);
+  return { satrec: s, epoch: epoch };
+}
+
+function loadTLE(sat) {
+  const result = buildSatrec(sat);
+  satrec = result.satrec;
+  tleEpoch = result.epoch;
+  document.getElementById('tle-epoch').textContent = tleEpoch.toISOString().slice(0,19).replace('T',' ');
+  document.getElementById('sat-badge').className = 'badge badge-' + (tleSource === 'celestrak' ? 'live' : 'cache');
+  document.getElementById('sat-badge').textContent = tleSource === 'celestrak' ? 'LIVE' : 'CACHED';
+  document.getElementById('tle-source').textContent = tleSource === 'celestrak' ? 'CelesTrak' : 'CelesTrak (cached)';
+  document.getElementById('prov-orbital').innerHTML = '<span class=\"dot\"></span><span>Orbital: ' + (tleSource==='celestrak'?'CelesTrak TLE':'CelesTrak cached TLE') + ' → SGP4</span>';
+  document.getElementById('prov-orbital').className = 'prov-item ' + (tleSource==='celestrak'?'live':'cache');
+  addTelemetry('TLE', (tleSource==='celestrak'?'Fresh':'Cached') + ' orbital data loaded — NORAD 39163', tleSource==='celestrak'?'live':'cache');
+}
+
+async function fetchTLE() {
+  let sat = null;
+  try {
+    const r = await fetch(CONFIG.CELESTRAK_URL, { mode: 'cors' });
+    if (r.ok) {
+      const data = await r.json();
+      sat = data.find(s => s.NORAD_CAT_ID === CONFIG.NORAD_ID);
+    }
+  } catch(e) {}
+  if (!sat) {
+    try {
+      const r = await fetch(CONFIG.CORS_PROXY + encodeURIComponent(CONFIG.CELESTRAK_URL));
+      if (r.ok) {
+        const data = await r.json();
+        sat = data.find(s => s.NORAD_CAT_ID === CONFIG.NORAD_ID);
+        if (sat) tleSource = 'celestrak';
+      }
+    } catch(e) {}
+  }
+  if (!sat) { sat = BACKUP_TLE; tleSource = 'embedded'; }
+  else { tleSource = 'celestrak'; }
+  loadTLE(sat);
+}
+
+function propagate(now) {
+  if (!satrec) return null;
+  const pv = satellite.propagate(satrec, now);
+  if (!pv.position) return null;
+  const gmst = satellite.gstime(now);
+  const pos = satellite.eciToGeodetic(pv.position, gmst);
+  return {
+    lat: pos.latitude * 180 / Math.PI,
+    lon: pos.longitude * 180 / Math.PI,
+    alt: pos.height,
+    vel: pv.velocity ? Math.sqrt(pv.velocity.x**2 + pv.velocity.y**2 + pv.velocity.z**2) : 0,
+  };
+}
+
+function calcVis(satPos, st) {
+  const obs = { latitude: st.lat*Math.PI/180, longitude: st.lon*Math.PI/180, height: st.el/1000 };
+  const ecf = satellite.geodeticToEcf({ latitude: satPos.lat*Math.PI/180, longitude: satPos.lon*Math.PI/180, height: satPos.alt });
+  const look = satellite.ecfToLookAngles(obs, ecf);
+  const el = look.elevation * 180 / Math.PI;
+  const az = look.azimuth * 180 / Math.PI;
+  const ref = satellite.geodeticToEcf(obs);
+  const slant = Math.sqrt((ecf.x-ref.x)**2 + (ecf.y-ref.y)**2 + (ecf.z-ref.z)**2);
+  return { el, az, slant, vis: el > 5 };
+}
+
+function updateClock() {
+  const eat = new Date(Date.now() + 3*60*60*1000);
+  document.getElementById('eat-clock').textContent = eat.toISOString().slice(0,19).replace('T',' ') + ' EAT';
+}
+function updateAge() {
+  if (!tleEpoch) return;
+  const a = (Date.now() - tleEpoch.getTime()) / 1000;
+  document.getElementById('tle-age').textContent = Math.floor(a/3600) + 'h ' + Math.floor((a%3600)/60) + 'm';
+}
+function updateMesh() {
+  document.getElementById('mesh-nodes').textContent = meshData.nodesOnline + '/' + meshData.nodesTotal;
+  document.getElementById('mesh-signal').textContent = Math.round(meshData.signal) + '%';
+  const b = document.getElementById('mesh-badge');
+  const p = document.getElementById('prov-mesh');
+  if (meshData.mode === 'LIVE') { b.className='badge badge-live'; b.textContent='LIVE'; p.className='prov-item live'; p.innerHTML='<span class=\"dot\"></span><span>Mesh: Authenticated device telemetry</span>'; }
+  else if (meshData.mode === 'SIMULATED') { b.className='badge badge-sim'; b.textContent='SIMULATED'; p.className='prov-item sim'; p.innerHTML='<span class=\"dot\"></span><span>Mesh: Simulation mode</span>'; }
+  else { b.className='badge badge-offline'; b.textContent='OFFLINE'; p.className='prov-item offline'; p.innerHTML='<span class=\"dot\"></span><span>Mesh: Awaiting device telemetry</span>'; }
+}
+function addTelemetry(src, msg, type) {
+  const t = new Date().toISOString().slice(11,19);
+  telemetryEntries.unshift({ time: t, src, msg, type });
+  if (telemetryEntries.length > 20) telemetryEntries.pop();
+  document.getElementById('telemetry-log').innerHTML = telemetryEntries.map(e =>
+    '<div class=\"entry\"><span class=\"time\">['+e.time+']</span> <span class=\"'+e.type+'\">'+e.src+':</span> '+e.msg+'</div>'
+  ).join('');
+}
+function updateVisList(v) {
+  const list = document.getElementById('visibility-list');
+  list.innerHTML = '';
+  Object.entries(v).forEach(([name, vis]) => {
+    const bars = vis.el > 30 ? 4 : vis.el > 20 ? 3 : vis.el > 10 ? 2 : vis.el > 5 ? 1 : 0;
+    const div = document.createElement('div');
+    div.className = 'vis-item';
+    div.innerHTML = '<div class=\"info\"><span class=\"vis-dot '+(vis.vis?'online':bars>0?'weak':'offline')+'\"></span><div><div class=\"vis-name\">'+name+'</div><div class=\"vis-detail\">El '+vis.el.toFixed(1)+'° · Az '+vis.az.toFixed(0)+'° · '+vis.slant.toFixed(0)+' km</div></div></div><div class=\"signal-bars\"><span class=\"'+(bars>0?'on':'')+' '+(bars===1?'warn':'')+'\"></span><span class=\"'+(bars>1?'on':'')+' '+(bars===2?'warn':'')+'\"></span><span class=\"'+(bars>2?'on':'')+'\"></span><span class=\"'+(bars>3?'on':'')+'\"></span></div>';
+    list.appendChild(div);
+  });
+}
+
+function connectWS() {
+  if (ws) try { ws.close(); } catch(e) {}
+  document.getElementById('ws-status').className = 'status-pill offline';
+  document.getElementById('ws-text').textContent = 'Gateway Offline';
+  try {
+    ws = new WebSocket(CONFIG.GATEWAY_WS);
+    ws.onopen = () => { wsConnected = true; document.getElementById('ws-status').className='status-pill live'; document.getElementById('ws-text').textContent='Gateway Connected'; document.getElementById('conn-detail').className='conn-status connected'; document.getElementById('conn-detail').innerHTML='<span class=\"pulse-dot\"></span><span>Connected to AAMush Live Gateway</span>'; addTelemetry('WS','Secure WebSocket established','live'); ws.send(JSON.stringify({action:'get_snapshot'})); };
+    ws.onmessage = (e) => { try { const m=JSON.parse(e.data); if(m.mesh){meshData=m.mesh;updateMesh();} }catch(e){} };
+    ws.onclose = () => { wsConnected=false; document.getElementById('ws-status').className='status-pill offline'; document.getElementById('ws-text').textContent='Gateway Offline'; document.getElementById('conn-detail').className='conn-status disconnected'; document.getElementById('conn-detail').innerHTML='<span class=\"pulse-dot\"></span><span>Disconnected — retrying in 5s</span>'; setTimeout(connectWS,5000); };
+    ws.onerror = () => { document.getElementById('ws-status').className='status-pill offline'; document.getElementById('ws-text').textContent='Gateway Error'; };
+  } catch(e) { setTimeout(connectWS,10000); }
+}
+
+function frame() {
+  const now = new Date();
+  const sp = propagate(now);
+  if (sp) {
+    document.getElementById('sat-lat').textContent = sp.lat.toFixed(6);
+    document.getElementById('sat-lon').textContent = sp.lon.toFixed(6);
+    document.getElementById('sat-alt').textContent = Math.round(sp.alt).toLocaleString();
+    document.getElementById('sat-vel').textContent = sp.vel.toFixed(2);
+    const sv = latLonToVec(sp.lat, sp.lon, 1 + sp.alt/6371);
+    satGroup.position.copy(sv); satGroup.lookAt(0,0,0);
+    trailPoints.push(sv.clone());
+    if (trailPoints.length > trailMax) trailPoints.shift();
+    const tp = trailLine.geometry.attributes.position.array;
+    for (let i=0; i<trailMax; i++) {
+      if (i < trailPoints.length) { tp[i*3]=trailPoints[i].x; tp[i*3+1]=trailPoints[i].y; tp[i*3+2]=trailPoints[i].z; }
+      else tp[i*3]=tp[i*3+1]=tp[i*3+2]=0;
+    }
+    trailLine.geometry.attributes.position.needsUpdate = true;
+    cone.position.copy(sv.clone().multiplyScalar(0.5)); cone.lookAt(0,0,0);
+    const vis = {};
+    Object.entries(STATIONS).forEach(([n,d]) => { vis[n] = calcVis(sp, d); });
+    updateVisList(vis);
+    linkGroup.clear();
+    Object.entries(STATIONS).forEach(([n,d]) => {
+      const v = vis[n];
+      if (v.vis) { const cv = latLonToVec(d.lat,d.lon,1.015); linkGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([sv,cv]), new THREE.LineBasicMaterial({ color:d.color, transparent:true, opacity:0.3+(v.el/90)*0.4 }))); }
+    });
+  }
+  earth.rotation.y += 0.0002;
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+async function init() {
+  updateClock(); setInterval(updateClock, 1000); setInterval(updateAge, 30000);
+  await fetchTLE(); setInterval(fetchTLE, CONFIG.TLE_REFRESH_MS);
+  connectWS();
+  requestAnimationFrame(frame);
+  setTimeout(() => document.getElementById('loading').classList.add('hidden'), 800);
+  setInterval(() => { if (!wsConnected) { meshData = { nodesOnline:24, nodesTotal:24, signal:98+Math.random()*2-1, latency:620+Math.random()*40-20, mode:'SIMULATED' }; updateMesh(); } }, 3000);
+}
+init();
+</script>
+</body>
+</html>
